@@ -55,11 +55,17 @@ def pixel_wise_fft_filtered_and_masked(video_path, fps):
     frames = []
     while ret:
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        frames.append(gray_frame)
+        # frames.append(gray_frame)
+        frames.append(gray_frame.astype(np.float32)) # Convert frame to float32 immediately for mean subtraction
         ret, frame = cap.read()
     cap.release()
 
     data_cube = np.stack(frames, axis=2)
+
+    # Subtract the mean from each pixel's time series
+    mean_per_pixel = np.mean(data_cube, axis=2, keepdims=True)
+    data_cube -= mean_per_pixel  # Remove the DC component
+
     fft_cube = fftshift(fft(data_cube, axis=2), axes=(2,))
     magnitude = np.abs(fft_cube)
     phase = np.angle(fft_cube)
@@ -350,7 +356,82 @@ def apply_mask_to_video(video_path, mask_path, output_video_path):
 #     return pd.DataFrame(freq_amp_data), max_amplitude_freq, max_power_freq
 
 
-#FFT with interpolation and percentile
+# #FFT with interpolation and percentile
+# def pixel_wise_fft(video_path, fps, freq_min, freq_max):
+#     capture = cv2.VideoCapture(video_path)
+#     if not capture.isOpened():
+#         raise ValueError("Error opening video file")
+#
+#     num_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+#     ret, frame = capture.read()
+#     if not ret:
+#         capture.release()
+#         raise ValueError("Unable to read video frame")
+#
+#     frame_height, frame_width = frame.shape[:2]
+#     pixel_time_series = np.zeros((frame_height, frame_width, num_frames), dtype=np.float32)
+#
+#     capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+#     for i in range(num_frames):
+#         ret, frame = capture.read()
+#         if not ret:
+#             break
+#         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+#         pixel_time_series[:, :, i] = gray_frame
+#
+#     capture.release()
+#
+#     freq_bins = np.fft.fftfreq(n=num_frames, d=1 / fps)
+#     positive_freq_bins = freq_bins[freq_bins > 0]
+#     amplitude_distribution = np.zeros(len(positive_freq_bins))
+#     power_distribution = np.zeros(len(positive_freq_bins))
+#
+#     freq_amp_data = []
+#
+#     for i in range(frame_height):
+#         for j in range(frame_width):
+#             intensity_series = pixel_time_series[i, j, :]
+#             fft_result = np.fft.fft(intensity_series)
+#             fft_frequencies = np.fft.fftfreq(n=num_frames, d=1 / fps)
+#             positive_frequencies = fft_frequencies > 0
+#             power_spectrum = np.abs(fft_result[positive_frequencies]) ** 2
+#             amplitude_spectrum = np.abs(fft_result[positive_frequencies])
+#
+#             # Step 1: Frequency Range Filtering
+#             freq_range_mask = (fft_frequencies[positive_frequencies] >= freq_min) & (
+#                         fft_frequencies[positive_frequencies] <= freq_max)
+#             filtered_frequencies = fft_frequencies[positive_frequencies][freq_range_mask]
+#             filtered_power = power_spectrum[freq_range_mask]
+#             filtered_amplitude = amplitude_spectrum[freq_range_mask]
+#
+#             # Step 2: Power Threshold Filtering
+#             if filtered_power.size > 0:
+#                 power_threshold = np.percentile(filtered_power, 95)
+#                 significant_power_mask = filtered_power > power_threshold
+#                 significant_frequencies = filtered_frequencies[significant_power_mask]
+#                 significant_power = filtered_power[significant_power_mask]
+#                 significant_amplitude = filtered_amplitude[significant_power_mask]
+#
+#                 for freq, power, amplitude in zip(significant_frequencies, significant_power, significant_amplitude):
+#                     freq_idx = np.argmin(np.abs(positive_freq_bins - freq))
+#                     amplitude_distribution[freq_idx] += amplitude
+#                     power_distribution[freq_idx] += power
+#                     freq_amp_data.append({"Frequency": freq, "Amplitude": amplitude, "Power": power})
+#
+#     # Interpolate distributions
+#     interpolated_freqs = np.linspace(positive_freq_bins.min(), positive_freq_bins.max(), 1000)
+#     amplitude_spline = UnivariateSpline(positive_freq_bins, amplitude_distribution, s=0)
+#     power_spline = UnivariateSpline(positive_freq_bins, power_distribution, s=0)
+#
+#     interpolated_amplitude_distribution = amplitude_spline(interpolated_freqs)
+#     interpolated_power_distribution = power_spline(interpolated_freqs)
+#
+#     max_amplitude_freq = interpolated_freqs[np.argmax(interpolated_amplitude_distribution)]
+#     max_power_freq = interpolated_freqs[np.argmax(interpolated_power_distribution)]
+#
+#     return pd.DataFrame(freq_amp_data), max_amplitude_freq, max_power_freq
+
+#FFT with interpolation and percentile and mean subtraction
 def pixel_wise_fft(video_path, fps, freq_min, freq_max):
     capture = cv2.VideoCapture(video_path)
     if not capture.isOpened():
@@ -374,6 +455,10 @@ def pixel_wise_fft(video_path, fps, freq_min, freq_max):
         pixel_time_series[:, :, i] = gray_frame
 
     capture.release()
+
+    # Subtract the mean from each pixel's time series
+    mean_per_pixel = np.mean(pixel_time_series, axis=2, keepdims=True)
+    pixel_time_series -= mean_per_pixel
 
     freq_bins = np.fft.fftfreq(n=num_frames, d=1 / fps)
     positive_freq_bins = freq_bins[freq_bins > 0]
@@ -424,8 +509,6 @@ def pixel_wise_fft(video_path, fps, freq_min, freq_max):
     max_power_freq = interpolated_freqs[np.argmax(interpolated_power_distribution)]
 
     return pd.DataFrame(freq_amp_data), max_amplitude_freq, max_power_freq
-
-
 
 def calculate_statistics(valid_cbfs):
     if valid_cbfs.size > 0:
