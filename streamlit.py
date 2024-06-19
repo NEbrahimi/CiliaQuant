@@ -68,7 +68,7 @@ def convert_video_for_streamlit(input_path):
     return output_path
 
 
-def pixel_wise_fft_filtered_and_masked(video_path, fps):
+def pixel_wise_fft_filtered_and_masked(video_path, fps, freq_min, freq_max, mag_threshold):
     cap = cv2.VideoCapture(video_path)
     ret, frame = cap.read()
     if not ret:
@@ -92,7 +92,7 @@ def pixel_wise_fft_filtered_and_masked(video_path, fps):
     magnitude = np.abs(fft_cube)
     phase = np.angle(fft_cube)
     freqs = np.fft.fftshift(np.fft.fftfreq(len(frames), d=1 / fps))
-    valid_indices = (freqs > 2) & (freqs < 30)
+    valid_indices = (freqs >= freq_min) & (freqs <= freq_max)
     magnitude_filtered = magnitude[:, :, valid_indices]
     phase_filtered = phase[:, :, valid_indices]
     freqs_filtered = freqs[valid_indices]
@@ -102,7 +102,7 @@ def pixel_wise_fft_filtered_and_masked(video_path, fps):
     dominant_phase = np.take_along_axis(phase_filtered, dominant_freq_indices[:, :, np.newaxis], axis=2).squeeze()
     dominant_frequencies = freqs_filtered[dominant_freq_indices]
 
-    mask = (dominant_magnitude >= 300).astype(np.uint8) * 255
+    mask = (dominant_magnitude >= mag_threshold).astype(np.uint8) * 255
     contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     area_threshold = 10  # Minimum area threshold to keep a contour
 
@@ -629,7 +629,8 @@ if 'original_video_path' in st.session_state and run_step_2:
     video_height = 360  # Height of the video window (adjust based on your video's dimensions)
 
     # Generate the maps
-    mask_path, frequency_map_path, magnitude_path = pixel_wise_fft_filtered_and_masked(st.session_state['original_video_path'], fps)
+    mask_path, frequency_map_path, magnitude_path = pixel_wise_fft_filtered_and_masked(st.session_state['original_video_path'],
+                                                                                       fps, freq_min, freq_max, mag_threshold)
 
     # Save mask_path to session state
     st.session_state['mask_path'] = mask_path
