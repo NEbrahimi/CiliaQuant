@@ -12,18 +12,40 @@ from scipy.signal import find_peaks
 import pandas as pd
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import UnivariateSpline
+import seaborn as sns
+import matplotlib as mpl
+import matplotlib.ticker as ticker
 
 
 # Set page configuration and styles
+# st.set_page_config(page_title="Cilia Analysis Tool", layout="wide")
+# st.markdown(
+#     """
+#     <style>
+#     .css-18e3th9 {background-color: #F8F9FA;}
+#     .css-1d391kg {background-color: white;}
+#     </style>
+#     """, unsafe_allow_html=True)
+
+# Set page configuration
 st.set_page_config(page_title="Cilia Analysis Tool", layout="wide")
+
+# Add custom CSS for the table borders and text color
 st.markdown(
     """
     <style>
-    .css-18e3th9 {background-color: #F8F9FA;}
-    .css-1d391kg {background-color: white;}
+    table {
+        border-collapse: collapse;
+        color: black !important;
+    }
+    table, th, td {
+        border: 1px solid black !important;
+        color: black !important;
+    }
     </style>
-    """, unsafe_allow_html=True)
-
+    """,
+    unsafe_allow_html=True
+)
 
 def convert_nd2_to_video(input_file, output_dir, fps):
     with ND2Reader(input_file) as images:
@@ -508,7 +530,7 @@ def pixel_wise_fft(video_path, fps, freq_min, freq_max):
     max_amplitude_freq = interpolated_freqs[np.argmax(interpolated_amplitude_distribution)]
     max_power_freq = interpolated_freqs[np.argmax(interpolated_power_distribution)]
 
-    return pd.DataFrame(freq_amp_data), max_amplitude_freq, max_power_freq
+    return pd.DataFrame(freq_amp_data), max_amplitude_freq, max_power_freq, interpolated_freqs, interpolated_power_distribution
 
 def calculate_statistics(valid_cbfs):
     if valid_cbfs.size > 0:
@@ -609,6 +631,9 @@ if 'original_video_path' in st.session_state and run_step_2:
     # Generate the maps
     mask_path, frequency_map_path, magnitude_path = pixel_wise_fft_filtered_and_masked(st.session_state['original_video_path'], fps)
 
+    # Save mask_path to session state
+    st.session_state['mask_path'] = mask_path
+
     frames_output_dir = tempfile.mkdtemp()
     masked_video_path = os.path.join(frames_output_dir, 'masked_video.mp4')
 
@@ -706,41 +731,120 @@ if 'original_video_path' in st.session_state and run_step_2:
 #     with open(max_power_map_path, "rb") as file:
 #         st.download_button("Download Max Power Map", file.read(), file_name='max_power_map.png', key="download_max_power_map")
 
-## step 3 using freq_amp_df
+# ## step 3 using freq_amp_df --- original
+# if 'original_video_permanent_path' in st.session_state and run_step_3:
+#     fps = 1 / exposure_time
+#     video_path = st.session_state['original_video_permanent_path']
+#     if video_source == 'Masked':
+#         video_path = st.session_state.get('masked_video_permanent_path', video_path)
+#
+#     freq_amp_df, max_amplitude_freq, max_power_freq = pixel_wise_fft(video_path, fps, freq_min, freq_max)
+#
+#     # Extract valid frequencies
+#     valid_cbfs = freq_amp_df[freq_amp_df['Frequency'] > 0]['Frequency']
+#     print(f"Valid CBFs: {valid_cbfs.describe()}")
+#
+#     stats = calculate_statistics(valid_cbfs)
+#
+#     dominant_freq_amplitude, dominant_freq_power = report_dominant_frequencies(max_amplitude_freq, max_power_freq)
+#
+#     # Debug output
+#     print("Valid CBFs:", valid_cbfs)
+#     print("Statistics:", stats)
+#     print("Dominant Frequency (Amplitude):", dominant_freq_amplitude)
+#     print("Dominant Frequency (Power):", dominant_freq_power)
+#
+#     col1, col2 = st.columns(2)
+#     with col1:
+#         # placeholder for plot
+#         pass
+#
+#     with col2:
+#         st.table(pd.DataFrame(stats, index=[0]))
+#         st.write(f"Dominant Frequency (Amplitude): {max_amplitude_freq:.2f} Hz")
+#         st.write(f"Dominant Frequency (Power): {max_power_freq:.2f} Hz")
+#
+#     with open(os.path.join(tempfile.gettempdir(), 'freq_amp_data.csv'), "rb") as file:
+#         st.download_button("Download Frequency and Amplitude Data", file.read(), file_name='freq_amp_data.csv', key="download_freq_amp_data")
+
+# Step 3 processing with updated visualizations and structured table layout
 if 'original_video_permanent_path' in st.session_state and run_step_3:
-    fps = 1 / exposure_time
-    video_path = st.session_state['original_video_permanent_path']
-    if video_source == 'Masked':
-        video_path = st.session_state.get('masked_video_permanent_path', video_path)
 
-    freq_amp_df, max_amplitude_freq, max_power_freq = pixel_wise_fft(video_path, fps, freq_min, freq_max)
+    mpl.rcParams['agg.path.chunksize'] = 10000  # You can adjust this value as needed
 
-    # Extract valid frequencies
-    valid_cbfs = freq_amp_df[freq_amp_df['Frequency'] > 0]['Frequency']
-    print(f"Valid CBFs: {valid_cbfs.describe()}")
+    fps = 1 / exposure_time  # Calculate frames per second based on exposure time
+    video_path = st.session_state['original_video_permanent_path']  # Get the path of the original video
 
-    stats = calculate_statistics(valid_cbfs)
+    if video_source == 'Masked' and 'mask_path' in st.session_state and os.path.exists(st.session_state['mask_path']):
+        mask_path = st.session_state['mask_path']
+        mask_img = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        if mask_img is not None:
+            coverage_percent = np.count_nonzero(mask_img) / mask_img.size * 100
+        else:
+            st.error("Failed to read the mask image. Check the file at the specified path.")
+            coverage_percent = "N/A"  # In case mask image is not readable
+    else:
+        coverage_percent = "100" if video_source == 'Original' else "N/A"
 
-    dominant_freq_amplitude, dominant_freq_power = report_dominant_frequencies(max_amplitude_freq, max_power_freq)
+    # Proceed with analysis only if coverage_percent is not "N/A"
+    if coverage_percent != "N/A":
+        # Analyze video with the specified frequency parameters
+        freq_amp_df, max_amplitude_freq, max_power_freq, interpolated_freqs, interpolated_power_distribution = pixel_wise_fft(video_path, fps, freq_filter_min, freq_filter_max)
+        valid_cbfs = freq_amp_df[freq_amp_df['Frequency'] > 0]['Frequency']
+        stats = calculate_statistics(valid_cbfs)
 
-    # Debug output
-    print("Valid CBFs:", valid_cbfs)
-    print("Statistics:", stats)
-    print("Dominant Frequency (Amplitude):", dominant_freq_amplitude)
-    print("Dominant Frequency (Power):", dominant_freq_power)
+        # col1, col2, col3 = st.columns(3)
+        col1, col2, col3 = st.columns([3, 1, 4])
+        with col1:
+            scaled_power_distribution = [val / 1e9 for val in interpolated_power_distribution]
+            st.markdown("<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 55px '>Power Spectral Density</h5>", unsafe_allow_html=True)
+            # fig, ax = plt.subplots()
+            fig, ax = plt.subplots(figsize=(8, 6), dpi=600)
+            ax.plot(interpolated_freqs, scaled_power_distribution)
+            ax.set_xlabel('Frequency (Hz)')
+            ax.set_ylabel('Power (x10^9)')
+            # ax.set_xlim(left=0)
+            ax.set_xlim(0, 100)
+            ax.set_ylim(bottom=0)
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.1f}'))
+            ax.grid(False)
+            st.pyplot(fig)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        # placeholder for plot
-        pass
+        with col2:
+            st.markdown("<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 50px '> Box Plot</h5>", unsafe_allow_html=True)
+            # fig, ax = plt.subplots()
+            fig, ax = plt.subplots(figsize=(2, 6), dpi=400)
+            ax.set_ylabel('Frequency (Hz)')
+            sns.boxplot(y=valid_cbfs)
+            st.pyplot(fig)
 
-    with col2:
-        st.table(pd.DataFrame(stats, index=[0]))
-        st.write(f"Dominant Frequency (Amplitude): {max_amplitude_freq:.2f} Hz")
-        st.write(f"Dominant Frequency (Power): {max_power_freq:.2f} Hz")
+        with col3:
+            data = {
+                'Measurement': ['Name', 'CFB (power) (Hz)', 'CBF (amplitude) (Hz)', 'Mean Frequency (Hz)', 'Median Frequency (Hz)', 'Standard Deviation', '25th Percentile', '75th Percentile', 'Coverage %*'],
+                'Value': [
+                    uploaded_file.name,
+                    f"{max_power_freq:.2f}",
+                    f"{max_amplitude_freq:.2f}",
+                    f"{stats['Mean']:.2f}",
+                    f"{stats['Median']:.2f}",
+                    f"{stats['std']:.2f}",
+                    f"{stats['25%']:.2f}",
+                    f"{stats['75%']:.2f}",
+                    f"{coverage_percent:.2f}" if coverage_percent != "100" else coverage_percent
+                ]
+            }
+            df = pd.DataFrame(data)
+            st.markdown("<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 0px '>Measurement Results</h5>", unsafe_allow_html=True)
+            # st.markdown("###### Ciliary Beat Frequency (CBF) Measurement Results")
+            st.table(df)
+            st.markdown('*Coverage % is calculated based on the masked video, and is 100% for the original video.')
+    else:
+        st.error("Mask path not found or the original video is selected without a need for masking. Please complete the necessary steps to generate the mask if using a masked video.")
 
-    with open(os.path.join(tempfile.gettempdir(), 'freq_amp_data.csv'), "rb") as file:
-        st.download_button("Download Frequency and Amplitude Data", file.read(), file_name='freq_amp_data.csv', key="download_freq_amp_data")
+
+
+
+
 
 
 
