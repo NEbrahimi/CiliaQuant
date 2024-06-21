@@ -601,6 +601,10 @@ with st.sidebar:
     freq_filter_max = st.number_input("Frequency Filter Max", value=30, help="Maximum frequency for CBF analysis.")
     run_step_3 = st.button("Run Step 3")
 
+    st.title("Step 4: Grid Analysis")
+    grid_size = st.number_input("Grid Size", min_value=1, max_value=20, value=7, step=1, help="Set the size of the grid.")
+    run_step_4 = st.button("Run Step 4")
+
 # Step 1
 if uploaded_file and exposure_time > 0 and run_step_1:
     fps = 1 / exposure_time
