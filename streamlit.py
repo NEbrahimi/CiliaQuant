@@ -765,7 +765,7 @@ tooltips = {
 }
 
 
-# Step 1
+# Step 1 processing
 if uploaded_file and exposure_time > 0 and run_step_1:
     # Clear session state for subsequent steps
     keys_to_clear = ['mask_path', 'fft_results', 'selected_video_path', 'original_video_permanent_path', 'masked_video_permanent_path', 'compatible_masked_video_path']
@@ -864,82 +864,8 @@ if 'original_video_path' in st.session_state and run_step_2:
         with open(resized_magnitude_path, "rb") as file:
             st.download_button("Download Magnitude Map", file.read(), file_name='Magnitude_Map.png', key="download_magnitude_map")
 
-# # Step 3 processing with percentile and maps
-# if 'original_video_permanent_path' in st.session_state and run_step_3:
-#     fps = 1 / exposure_time
-#     video_path = st.session_state['original_video_permanent_path']
-#     if video_source == 'Masked':
-#         video_path = st.session_state.get('masked_video_permanent_path', video_path)
-#
-#     cbf_map, max_power_map, freq_amp_df, max_amplitude_freq, max_power_freq = pixel_wise_fft(video_path, fps, freq_filter_min, freq_filter_max)
-#     valid_cbfs = cbf_map[cbf_map > 0]
-#
-#     stats = calculate_statistics(valid_cbfs)
-#     stats['Dominant Frequency (Amplitude)'], stats['Dominant Frequency (Power)'] = report_dominant_frequencies(max_amplitude_freq, max_power_freq)
-#
-#     cbf_map_path = os.path.join(tempfile.gettempdir(), 'cbf_map.png')
-#     max_power_map_path = os.path.join(tempfile.gettempdir(), 'max_power_map.png')
-#     save_maps(cbf_map, max_power_map, cbf_map_path, max_power_map_path)
-#
-#     freq_amp_df.to_csv(os.path.join(tempfile.gettempdir(), 'freq_amp_data.csv'), index=False)
-#
-#     col1, col2 = st.columns(2)
-#     with col1:
-#         st.image(cbf_map_path, caption="Ciliary Beat Frequency Map")
-#         st.image(max_power_map_path, caption="Maximum Power Spectrum Map")
-#
-#     with col2:
-#         st.table(pd.DataFrame(stats, index=[0]))
-#         st.write(f"Dominant Frequency (Amplitude): {max_amplitude_freq:.2f} Hz")
-#         st.write(f"Dominant Frequency (Power): {max_power_freq:.2f} Hz")
-#
-#     with open(os.path.join(tempfile.gettempdir(), 'freq_amp_data.csv'), "rb") as file:
-#         st.download_button("Download Frequency and Amplitude Data", file.read(), file_name='freq_amp_data.csv', key="download_freq_amp_data")
-#
-#     with open(cbf_map_path, "rb") as file:
-#         st.download_button("Download CBF Map", file.read(), file_name='cbf_map.png', key="download_cbf_map")
-#
-#     with open(max_power_map_path, "rb") as file:
-#         st.download_button("Download Max Power Map", file.read(), file_name='max_power_map.png', key="download_max_power_map")
-
-# ## step 3 using freq_amp_df --- original
-# if 'original_video_permanent_path' in st.session_state and run_step_3:
-#     fps = 1 / exposure_time
-#     video_path = st.session_state['original_video_permanent_path']
-#     if video_source == 'Masked':
-#         video_path = st.session_state.get('masked_video_permanent_path', video_path)
-#
-#     freq_amp_df, max_amplitude_freq, max_power_freq = pixel_wise_fft(video_path, fps, freq_min, freq_max)
-#
-#     # Extract valid frequencies
-#     valid_cbfs = freq_amp_df[freq_amp_df['Frequency'] > 0]['Frequency']
-#     print(f"Valid CBFs: {valid_cbfs.describe()}")
-#
-#     stats = calculate_statistics(valid_cbfs)
-#
-#     dominant_freq_amplitude, dominant_freq_power = report_dominant_frequencies(max_amplitude_freq, max_power_freq)
-#
-#     # Debug output
-#     print("Valid CBFs:", valid_cbfs)
-#     print("Statistics:", stats)
-#     print("Dominant Frequency (Amplitude):", dominant_freq_amplitude)
-#     print("Dominant Frequency (Power):", dominant_freq_power)
-#
-#     col1, col2 = st.columns(2)
-#     with col1:
-#         # placeholder for plot
-#         pass
-#
-#     with col2:
-#         st.table(pd.DataFrame(stats, index=[0]))
-#         st.write(f"Dominant Frequency (Amplitude): {max_amplitude_freq:.2f} Hz")
-#         st.write(f"Dominant Frequency (Power): {max_power_freq:.2f} Hz")
-#
-#     with open(os.path.join(tempfile.gettempdir(), 'freq_amp_data.csv'), "rb") as file:
-#         st.download_button("Download Frequency and Amplitude Data", file.read(), file_name='freq_amp_data.csv', key="download_freq_amp_data")
 
 # Step 3 processing with updated visualizations and structured table layout
-#
 if 'original_video_permanent_path' in st.session_state and run_step_3:
 
     mpl.rcParams['agg.path.chunksize'] = 10000  # You can adjust this value as needed
@@ -1096,7 +1022,7 @@ if 'fft_results' in st.session_state and run_step_4:
         converted_grid_video_path = convert_video_to_mp4(grid_video_path)
 
         col1, col2, col3, col4, col5 = st.columns(
-            [2.5, 0.2, 3.0, 0.01, 2])  # Added two columns with 0.5 width to create spacing
+            [2.5, 0.2, 3.0, 0.01, 2])  # Added two columns 2 AND 4 to create spacing
 
         with col1:
             st.markdown(
@@ -1116,55 +1042,25 @@ if 'fft_results' in st.session_state and run_step_4:
                 st.download_button("Download Grid CBF Map", file.read(), file_name='grid_cbf_map.png',
                                    key="download_grid_cbf_map")
 
-        # with col5:
-        #     st.markdown(
-        #         f"<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 0px;'>Variation Metrics</h5>",
-        #         unsafe_allow_html=True)
-        #     variation_data = {
-        #         'Metric': ['Mean CBF', 'Standard Deviation of CBF', 'Coefficient of Variation'],
-        #         'Value': [f"{mean_cbf:.2f}", f"{std_dev_cbf:.2f}", f"{cv_cbf:.2f}"]
-        #     }
-        #     variation_df = pd.DataFrame(variation_data)
-        #     st.markdown(
-        #         variation_df.to_html(index=False, justify='center', table_id="variation_metrics_table"),
-        #         unsafe_allow_html=True
-        #     )
-        #
-        # # Adding custom CSS to center the table
-        # st.markdown(
-        #     """
-        #     <style>
-        #     #variation_metrics_table {
-        #         margin-left: auto;
-        #         margin-right: auto;
-        #     }
-        #     </style>
-        #     """,
-        #     unsafe_allow_html=True
-        # )
 
         with col5:
             st.markdown(
                 f"<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 0px;'>Variation Metrics</h5>",
                 unsafe_allow_html=True)
-
             variation_data = {
                 'Metric': [
-                    'Mean CBF',
-                    'Standard Deviation of CBF',
-                    'Coefficient of Variation'
+                    'Mean CBF <span class="tooltip"><span class="tooltip-icon">?</span><span class="tooltiptext">The average Ciliary Beat Frequency across all grid cells.</span></span>',
+                    'Standard Deviation of CBF <span class="tooltip"><span class="tooltip-icon">?</span><span class="tooltiptext">The standard deviation of Ciliary Beat Frequency across grid cells, measured in Hertz (Hz), representing variability from the mean.</span></span>',
+                    'Coefficient of Variation <span class="tooltip"><span class="tooltip-icon">?</span><span class="tooltiptext">The ratio of the standard deviation to the mean, indicating relative variability (0 means no variability, close to 0 means low variability, >1 means high variability).</span></span>'
                 ],
                 'Value': [f"{mean_cbf:.2f}", f"{std_dev_cbf:.2f}", f"{cv_cbf:.2f}"]
             }
+            variation_df = pd.DataFrame(variation_data)
 
-            tooltips = {
-                'Mean CBF': 'The average of the Ciliary Beat Frequency values.',
-                'Standard Deviation of CBF': 'The standard deviation of the Ciliary Beat Frequency, indicating variability.',
-                'Coefficient of Variation': 'The ratio of the standard deviation to the mean, indicating relative variability.'
-            }
-
-            html_table = """
-            <style>
+            # Adding custom CSS for tooltips similar to sidebar
+            st.markdown(
+                """
+                <style>
                 .tooltip {
                     position: relative;
                     display: inline-block;
@@ -1173,43 +1069,42 @@ if 'fft_results' in st.session_state and run_step_4:
                     color: #6c757d;
                     margin-left: 5px;
                 }
-
                 .tooltip .tooltiptext {
                     visibility: hidden;
                     width: 200px;
-                    background-color: #555;
-                    color: #fff;
+                    background-color: #f0f0f0;
+                    color: #333;
                     text-align: center;
                     border-radius: 6px;
+                    border: 1px solid #ccc;
+                    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
                     padding: 5px;
                     position: absolute;
                     z-index: 1;
-                    bottom: 125%; /* Position the tooltip above the text */
+                    bottom: 150%; /* Position the tooltip above the text */
                     left: 50%;
                     margin-left: -100px;
                     opacity: 0;
                     transition: opacity 0.3s;
                 }
-
                 .tooltip:hover .tooltiptext {
                     visibility: visible;
                     opacity: 1;
                 }
-
-                .tooltip:after {
-                    content: "?";
-                    display: inline-block;
+                .tooltip-icon {
                     font-size: 12px;
-                    color: white;
-                    background-color: #6c757d;
+                    font-weight: bold;
+                    color: #6e7075; /* Darker gray color */
+                    background-color: transparent;
+                    border: 1.5px solid #6e7075;
                     border-radius: 50%;
-                    width: 18px;
-                    height: 18px;
-                    text-align: center;
-                    line-height: 18px;
+                    width: 15px;
+                    height: 15px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
                     margin-left: 5px;
                 }
-
                 table {
                     width: 100%;
                     border-collapse: collapse;
@@ -1222,32 +1117,27 @@ if 'fft_results' in st.session_state and run_step_4:
                 th {
                     background-color: #f2f2f2;
                 }
-            </style>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Metric</th>
-                        <th>Value</th>
-                    </tr>
-                </thead>
-                <tbody>
-            """
-
-            for metric, value in zip(variation_data['Metric'], variation_data['Value']):
-                html_table += f"""
-                    <tr>
-                        <td>{metric} <span class="tooltip"><span class="tooltiptext">{tooltips[metric]}</span></span></td>
-                        <td>{value}</td>
-                    </tr>
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                variation_df.to_html(index=False, escape=False, justify='center', table_id="variation_metrics_table"),
+                unsafe_allow_html=True
+            )
+            st.markdown(
                 """
+                <style>
+                #variation_metrics_table {
+                    margin-left: auto;
+                    margin-right: auto;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
 
-            html_table += """
-                </tbody>
-            </table>
-            """
 
-            # Display the table with tooltips
-            st.markdown(html_table, unsafe_allow_html=True)
 
 
 
