@@ -27,6 +27,11 @@ import matplotlib.ticker as ticker
 #     </style>
 #     """, unsafe_allow_html=True)
 
+# Clear session state at the beginning of the script
+if 'clear_session' not in st.session_state:
+    st.session_state.clear()
+    st.session_state['clear_session'] = True
+
 # Set page configuration
 st.set_page_config(page_title="Cilia Analysis Tool", layout="wide")
 
@@ -118,7 +123,7 @@ def pixel_wise_fft_filtered_and_masked(video_path, fps, freq_min, freq_max, mag_
     plt.figure(figsize=(15, 8))
     im = plt.imshow(dominant_frequencies, cmap='jet', interpolation='nearest', vmin=0, vmax=50)
     plt.colorbar(im, label='Dominant Frequency (Hz)')
-    plt.title('Ciliary Beat Frequency Map')
+    # plt.title('Ciliary Beat Frequency Map')
     plt.xlabel('Pixel X')
     plt.ylabel('Pixel Y')
     frequency_map_path = os.path.join(tempfile.gettempdir(), 'frequency_map.png')
@@ -454,7 +459,91 @@ def apply_mask_to_video(video_path, mask_path, output_video_path):
 #     return pd.DataFrame(freq_amp_data), max_amplitude_freq, max_power_freq
 
 #FFT with interpolation and percentile and mean subtraction
-def pixel_wise_fft(video_path, fps, freq_min, freq_max):
+# def pixel_wise_fft(video_path, fps, freq_min, freq_max):
+#     capture = cv2.VideoCapture(video_path)
+#     if not capture.isOpened():
+#         raise ValueError("Error opening video file")
+#
+#     num_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+#     ret, frame = capture.read()
+#     if not ret:
+#         capture.release()
+#         raise ValueError("Unable to read video frame")
+#
+#     frame_height, frame_width = frame.shape[:2]
+#     pixel_time_series = np.zeros((frame_height, frame_width, num_frames), dtype=np.float32)
+#
+#     capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+#     for i in range(num_frames):
+#         ret, frame = capture.read()
+#         if not ret:
+#             break
+#         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+#         pixel_time_series[:, :, i] = gray_frame
+#
+#     capture.release()
+#
+#     # Subtract the mean from each pixel's time series
+#     mean_per_pixel = np.mean(pixel_time_series, axis=2, keepdims=True)
+#     pixel_time_series -= mean_per_pixel
+#
+#     freq_bins = np.fft.fftfreq(n=num_frames, d=1 / fps)
+#     positive_freq_bins = freq_bins[freq_bins > 0]
+#     amplitude_distribution = np.zeros(len(positive_freq_bins))
+#     power_distribution = np.zeros(len(positive_freq_bins))
+#
+#     freq_amp_data = []
+#
+#     fft_results = np.zeros((frame_height, frame_width, len(positive_freq_bins)), dtype=np.float32)
+#
+#     for i in range(frame_height):
+#         for j in range(frame_width):
+#             intensity_series = pixel_time_series[i, j, :]
+#             fft_result = np.fft.fft(intensity_series)
+#             fft_frequencies = np.fft.fftfreq(n=num_frames, d=1 / fps)
+#             positive_frequencies = fft_frequencies > 0
+#             power_spectrum = np.abs(fft_result[positive_frequencies]) ** 2
+#             amplitude_spectrum = np.abs(fft_result[positive_frequencies])
+#
+#             # Step 1: Frequency Range Filtering
+#             freq_range_mask = (fft_frequencies[positive_frequencies] >= freq_min) & (
+#                         fft_frequencies[positive_frequencies] <= freq_max)
+#             filtered_frequencies = fft_frequencies[positive_frequencies][freq_range_mask]
+#             filtered_power = power_spectrum[freq_range_mask]
+#             filtered_amplitude = amplitude_spectrum[freq_range_mask]
+#
+#             # Step 2: Power Threshold Filtering
+#             if filtered_power.size > 0:
+#                 power_threshold = np.percentile(filtered_power, 95)
+#                 significant_power_mask = filtered_power > power_threshold
+#                 significant_frequencies = filtered_frequencies[significant_power_mask]
+#                 significant_power = filtered_power[significant_power_mask]
+#                 significant_amplitude = filtered_amplitude[significant_power_mask]
+#
+#                 for freq, power, amplitude in zip(significant_frequencies, significant_power, significant_amplitude):
+#                     freq_idx = np.argmin(np.abs(positive_freq_bins - freq))
+#                     amplitude_distribution[freq_idx] += amplitude
+#                     power_distribution[freq_idx] += power
+#                     freq_amp_data.append({"Frequency": freq, "Amplitude": amplitude, "Power": power})
+#
+#             fft_results[i, j, :] = power_spectrum
+#
+#     # Interpolate distributions
+#     interpolated_freqs = np.linspace(positive_freq_bins.min(), positive_freq_bins.max(), 1000)
+#     amplitude_spline = UnivariateSpline(positive_freq_bins, amplitude_distribution, s=0)
+#     power_spline = UnivariateSpline(positive_freq_bins, power_distribution, s=0)
+#
+#     interpolated_amplitude_distribution = amplitude_spline(interpolated_freqs)
+#     interpolated_power_distribution = power_spline(interpolated_freqs)
+#
+#     max_amplitude_freq = interpolated_freqs[np.argmax(interpolated_amplitude_distribution)]
+#     max_power_freq = interpolated_freqs[np.argmax(interpolated_power_distribution)]
+#
+#     return pd.DataFrame(freq_amp_data), max_amplitude_freq, max_power_freq, interpolated_freqs, interpolated_power_distribution, fft_results
+#     # return pd.DataFrame(freq_amp_data), max_amplitude_freq, max_power_freq, interpolated_freqs, interpolated_power_distribution
+
+#FFT with interpolation and percentile and mean subtraction with masked issue resolved
+def pixel_wise_fft(video_path, mask_path, fps, freq_min, freq_max):
     capture = cv2.VideoCapture(video_path)
     if not capture.isOpened():
         raise ValueError("Error opening video file")
@@ -478,46 +567,59 @@ def pixel_wise_fft(video_path, fps, freq_min, freq_max):
 
     capture.release()
 
+    # Load and apply the mask image if provided
+    if mask_path:
+        mask_img = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        if mask_img is None:
+            raise ValueError("Failed to read the mask image.")
+        mask_img = mask_img.astype(np.bool_)
+        pixel_time_series[~mask_img] = 0
+
     # Subtract the mean from each pixel's time series
     mean_per_pixel = np.mean(pixel_time_series, axis=2, keepdims=True)
     pixel_time_series -= mean_per_pixel
 
-    freq_bins = np.fft.fftfreq(n=num_frames, d=1 / fps)
+    freq_bins = np.fft.fftfreq(num_frames, d=1 / fps)
     positive_freq_bins = freq_bins[freq_bins > 0]
     amplitude_distribution = np.zeros(len(positive_freq_bins))
     power_distribution = np.zeros(len(positive_freq_bins))
 
     freq_amp_data = []
 
+    fft_results = np.zeros((frame_height, frame_width, len(positive_freq_bins)), dtype=np.float32)
+
     for i in range(frame_height):
         for j in range(frame_width):
-            intensity_series = pixel_time_series[i, j, :]
-            fft_result = np.fft.fft(intensity_series)
-            fft_frequencies = np.fft.fftfreq(n=num_frames, d=1 / fps)
-            positive_frequencies = fft_frequencies > 0
-            power_spectrum = np.abs(fft_result[positive_frequencies]) ** 2
-            amplitude_spectrum = np.abs(fft_result[positive_frequencies])
+            if not mask_path or mask_img[i, j]:  # Process only if no mask or pixel is not masked
+                intensity_series = pixel_time_series[i, j, :]
+                fft_result = np.fft.fft(intensity_series)
+                fft_frequencies = np.fft.fftfreq(num_frames, d=1 / fps)
+                positive_frequencies = fft_frequencies > 0
+                power_spectrum = np.abs(fft_result[positive_frequencies]) ** 2
+                amplitude_spectrum = np.abs(fft_result[positive_frequencies])
 
-            # Step 1: Frequency Range Filtering
-            freq_range_mask = (fft_frequencies[positive_frequencies] >= freq_min) & (
+                # Step 1: Frequency Range Filtering
+                freq_range_mask = (fft_frequencies[positive_frequencies] >= freq_min) & (
                         fft_frequencies[positive_frequencies] <= freq_max)
-            filtered_frequencies = fft_frequencies[positive_frequencies][freq_range_mask]
-            filtered_power = power_spectrum[freq_range_mask]
-            filtered_amplitude = amplitude_spectrum[freq_range_mask]
+                filtered_frequencies = fft_frequencies[positive_frequencies][freq_range_mask]
+                filtered_power = power_spectrum[freq_range_mask]
+                filtered_amplitude = amplitude_spectrum[freq_range_mask]
 
-            # Step 2: Power Threshold Filtering
-            if filtered_power.size > 0:
-                power_threshold = np.percentile(filtered_power, 95)
-                significant_power_mask = filtered_power > power_threshold
-                significant_frequencies = filtered_frequencies[significant_power_mask]
-                significant_power = filtered_power[significant_power_mask]
-                significant_amplitude = filtered_amplitude[significant_power_mask]
+                # Step 2: Power Threshold Filtering
+                if filtered_power.size > 0:
+                    power_threshold = np.percentile(filtered_power, 95)
+                    significant_power_mask = filtered_power > power_threshold
+                    significant_frequencies = filtered_frequencies[significant_power_mask]
+                    significant_power = filtered_power[significant_power_mask]
+                    significant_amplitude = filtered_amplitude[significant_power_mask]
 
-                for freq, power, amplitude in zip(significant_frequencies, significant_power, significant_amplitude):
-                    freq_idx = np.argmin(np.abs(positive_freq_bins - freq))
-                    amplitude_distribution[freq_idx] += amplitude
-                    power_distribution[freq_idx] += power
-                    freq_amp_data.append({"Frequency": freq, "Amplitude": amplitude, "Power": power})
+                    for freq, power, amplitude in zip(significant_frequencies, significant_power, significant_amplitude):
+                        freq_idx = np.argmin(np.abs(positive_freq_bins - freq))
+                        amplitude_distribution[freq_idx] += amplitude
+                        power_distribution[freq_idx] += power
+                        freq_amp_data.append({"Frequency": freq, "Amplitude": amplitude, "Power": power})
+
+                fft_results[i, j, :] = power_spectrum
 
     # Interpolate distributions
     interpolated_freqs = np.linspace(positive_freq_bins.min(), positive_freq_bins.max(), 1000)
@@ -530,7 +632,8 @@ def pixel_wise_fft(video_path, fps, freq_min, freq_max):
     max_amplitude_freq = interpolated_freqs[np.argmax(interpolated_amplitude_distribution)]
     max_power_freq = interpolated_freqs[np.argmax(interpolated_power_distribution)]
 
-    return pd.DataFrame(freq_amp_data), max_amplitude_freq, max_power_freq, interpolated_freqs, interpolated_power_distribution
+    return pd.DataFrame(freq_amp_data), max_amplitude_freq, max_power_freq, interpolated_freqs, interpolated_power_distribution, fft_results
+
 
 def calculate_statistics(valid_cbfs):
     if valid_cbfs.size > 0:
@@ -578,6 +681,53 @@ def save_maps(cbf_map, max_power_map, cbf_map_path, max_power_map_path):
     else:
         print(f"Failed to save Max Power map to {max_power_map_path}")
 
+def compute_grid_cbf(fft_results, fps, grid_size, freq_filter_min, freq_filter_max):
+    frame_height, frame_width, num_freqs = fft_results.shape
+    cell_width = frame_width // grid_size
+    cell_height = frame_height // grid_size
+
+    # Ensure freq_bins and positive_freq_bins align with fft_results
+    freq_bins = np.fft.fftfreq(num_freqs * 2, d=1 / fps)[:num_freqs]  # Adjusted to align with fft_results
+    positive_freq_bins = freq_bins[freq_bins > 0]
+
+    # Handle the case where the number of positive frequencies does not match the FFT results
+    if len(positive_freq_bins) > num_freqs:
+        positive_freq_bins = positive_freq_bins[:num_freqs]
+    elif len(positive_freq_bins) < num_freqs:
+        positive_freq_bins = np.pad(positive_freq_bins, (0, num_freqs - len(positive_freq_bins)), 'constant')
+
+    freq_range_mask = (positive_freq_bins >= freq_filter_min) & (positive_freq_bins <= freq_filter_max)
+    filtered_freqs = positive_freq_bins[freq_range_mask]
+
+    cbf_grid = np.zeros((grid_size, grid_size))
+
+    for i in range(grid_size):
+        for j in range(grid_size):
+            cell_fft = fft_results[i * cell_height:(i + 1) * cell_height, j * cell_width:(j + 1) * cell_width, :]
+            cell_fft = cell_fft.reshape(-1, num_freqs)
+            mean_fft = np.mean(cell_fft, axis=0)
+
+            power_spectrum = np.abs(mean_fft) ** 2
+            filtered_power = power_spectrum[freq_range_mask]
+
+            if filtered_power.size > 0:
+                power_threshold = np.percentile(filtered_power, 95)
+                significant_power_mask = filtered_power > power_threshold
+                significant_power = filtered_power[significant_power_mask]
+                significant_freqs = filtered_freqs[significant_power_mask]
+
+                if significant_power.size > 0:
+                    dominant_freq_idx = np.argmax(significant_power)
+                    cbf_grid[i, j] = significant_freqs[dominant_freq_idx]
+                else:
+                    cbf_grid[i, j] = 0
+            else:
+                cbf_grid[i, j] = 0
+
+    return cbf_grid
+
+
+
 
 # Input widgets
 with st.sidebar:
@@ -601,12 +751,20 @@ with st.sidebar:
     freq_filter_max = st.number_input("Frequency Filter Max", value=30, help="Maximum frequency for CBF analysis.")
     run_step_3 = st.button("Run Step 3")
 
+    # Sidebar Input for Step 4
     st.title("Step 4: Grid Analysis")
-    grid_size = st.number_input("Grid Size", min_value=1, max_value=20, value=7, step=1, help="Set the size of the grid.")
+    grid_size = st.number_input("Grid Size", min_value=1, max_value=20, value=7, step=1,
+                                help="Set the size of the grid.")
     run_step_4 = st.button("Run Step 4")
 
 # Step 1
 if uploaded_file and exposure_time > 0 and run_step_1:
+    # Clear session state for subsequent steps
+    keys_to_clear = ['mask_path', 'fft_results', 'selected_video_path', 'original_video_permanent_path', 'masked_video_permanent_path', 'compatible_masked_video_path']
+    for key in keys_to_clear:
+        if key in st.session_state:
+            del st.session_state[key]
+
     fps = 1 / exposure_time
     if 'temp_dir' not in st.session_state:
         st.session_state['temp_dir'] = tempfile.mkdtemp()
@@ -773,6 +931,7 @@ if 'original_video_path' in st.session_state and run_step_2:
 #         st.download_button("Download Frequency and Amplitude Data", file.read(), file_name='freq_amp_data.csv', key="download_freq_amp_data")
 
 # Step 3 processing with updated visualizations and structured table layout
+#
 if 'original_video_permanent_path' in st.session_state and run_step_3:
 
     mpl.rcParams['agg.path.chunksize'] = 10000  # You can adjust this value as needed
@@ -780,6 +939,7 @@ if 'original_video_permanent_path' in st.session_state and run_step_3:
     fps = 1 / exposure_time  # Calculate frames per second based on exposure time
     video_path = st.session_state['original_video_permanent_path']  # Get the path of the original video
 
+    mask_path = None
     if video_source == 'Masked' and 'mask_path' in st.session_state and os.path.exists(st.session_state['mask_path']):
         mask_path = st.session_state['mask_path']
         mask_img = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
@@ -794,21 +954,26 @@ if 'original_video_permanent_path' in st.session_state and run_step_3:
     # Proceed with analysis only if coverage_percent is not "N/A"
     if coverage_percent != "N/A":
         # Analyze video with the specified frequency parameters
-        freq_amp_df, max_amplitude_freq, max_power_freq, interpolated_freqs, interpolated_power_distribution = pixel_wise_fft(video_path, fps, freq_filter_min, freq_filter_max)
+        freq_amp_df, max_amplitude_freq, max_power_freq, interpolated_freqs, interpolated_power_distribution, fft_results = pixel_wise_fft(
+            video_path, mask_path, fps, freq_filter_min, freq_filter_max)
+
+        # Save FFT results and selected video path to session state for use in step 4
+        st.session_state['fft_results'] = fft_results
+        st.session_state['selected_video_path'] = video_path
+
         valid_cbfs = freq_amp_df[freq_amp_df['Frequency'] > 0]['Frequency']
         stats = calculate_statistics(valid_cbfs)
 
-        # col1, col2, col3 = st.columns(3)
         col1, col2, col3 = st.columns([3, 1, 4])
         with col1:
             scaled_power_distribution = [val / 1e9 for val in interpolated_power_distribution]
-            st.markdown("<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 55px '>Power Spectral Density</h5>", unsafe_allow_html=True)
-            # fig, ax = plt.subplots()
+            st.markdown(
+                "<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 55px '>Power Spectral Density</h5>",
+                unsafe_allow_html=True)
             fig, ax = plt.subplots(figsize=(8, 6), dpi=600)
             ax.plot(interpolated_freqs, scaled_power_distribution)
             ax.set_xlabel('Frequency (Hz)')
             ax.set_ylabel('Power (x10^9)')
-            # ax.set_xlim(left=0)
             ax.set_xlim(0, 100)
             ax.set_ylim(bottom=0)
             ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.1f}'))
@@ -816,8 +981,9 @@ if 'original_video_permanent_path' in st.session_state and run_step_3:
             st.pyplot(fig)
 
         with col2:
-            st.markdown("<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 50px '> Box Plot</h5>", unsafe_allow_html=True)
-            # fig, ax = plt.subplots()
+            st.markdown(
+                "<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 50px '> Box Plot</h5>",
+                unsafe_allow_html=True)
             fig, ax = plt.subplots(figsize=(2, 6), dpi=400)
             ax.set_ylabel('Frequency (Hz)')
             sns.boxplot(y=valid_cbfs)
@@ -825,7 +991,9 @@ if 'original_video_permanent_path' in st.session_state and run_step_3:
 
         with col3:
             data = {
-                'Measurement': ['Name', 'CFB (power) (Hz)', 'CBF (amplitude) (Hz)', 'Mean Frequency (Hz)', 'Median Frequency (Hz)', 'Standard Deviation', '25th Percentile', '75th Percentile', 'Coverage %*'],
+                'Measurement': ['Name', 'CFB (power) (Hz)', 'CBF (amplitude) (Hz)', 'Mean Frequency (Hz)',
+                                'Median Frequency (Hz)', 'Standard Deviation', '25th Percentile', '75th Percentile',
+                                'Coverage %*'],
                 'Value': [
                     uploaded_file.name,
                     f"{max_power_freq:.2f}",
@@ -839,12 +1007,140 @@ if 'original_video_permanent_path' in st.session_state and run_step_3:
                 ]
             }
             df = pd.DataFrame(data)
-            st.markdown("<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 0px '>Measurement Results</h5>", unsafe_allow_html=True)
-            # st.markdown("###### Ciliary Beat Frequency (CBF) Measurement Results")
+            st.markdown(
+                "<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 0px '>Measurement Results</h5>",
+                unsafe_allow_html=True)
             st.table(df)
             st.markdown('*Coverage % is calculated based on the masked video, and is 100% for the original video.')
     else:
-        st.error("Mask path not found or the original video is selected without a need for masking. Please complete the necessary steps to generate the mask if using a masked video.")
+        st.error(
+            "Mask path not found or the original video is selected without a need for masking. Please complete the necessary steps to generate the mask if using a masked video.")
+
+# Step 4 processing
+if 'fft_results' in st.session_state and run_step_4:
+    fps = 1 / exposure_time
+    fft_results = st.session_state['fft_results']
+
+    # Use the selected video source from Step 3
+    video_path = st.session_state['selected_video_path']
+
+    if video_path is None:
+        st.error(
+            "The selected video source is not available. Please complete the necessary steps for generating the video.")
+    else:
+        cbf_grid = compute_grid_cbf(fft_results, fps, grid_size, freq_filter_min, freq_filter_max)
+
+        # Calculate the variation metrics
+        non_zero_cbfs = cbf_grid[cbf_grid > 0]
+        std_dev_cbf = np.std(non_zero_cbfs)
+        mean_cbf = np.mean(non_zero_cbfs)
+        cv_cbf = std_dev_cbf / mean_cbf if mean_cbf != 0 else 0  # Coefficient of Variation
+
+        # Create the grid map
+        grid_map_path = os.path.join(tempfile.gettempdir(), 'grid_map.png')
+        plt.figure(figsize=(10, 8))
+        plt.imshow(cbf_grid, cmap='jet', interpolation='nearest', vmin=0, vmax=50)
+        plt.colorbar(label='Dominant Frequency (Hz)')
+        # plt.title('Grid Ciliary Beat Frequency Map')
+        # plt.xlabel('Grid X')
+        # plt.ylabel('Grid Y')
+        plt.savefig(grid_map_path, bbox_inches='tight', pad_inches=0)
+        plt.close()
+
+        # Overlay grid lines and CBF values on video frames
+        capture = cv2.VideoCapture(video_path)
+        fourcc = cv2.VideoWriter_fourcc(*'M', 'J', 'P', 'G')
+        grid_video_path = os.path.join(tempfile.gettempdir(), 'grid_video.avi')
+        out = cv2.VideoWriter(grid_video_path, fourcc, fps,
+                              (int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))))
+
+        font_scale = max(0.3, min(1.0, 1.5 / grid_size))  # Adjusted font scale logic
+
+        while capture.isOpened():
+            ret, frame = capture.read()
+            if not ret:
+                break
+
+            for i in range(grid_size):
+                for j in range(grid_size):
+                    y1 = i * frame.shape[0] // grid_size
+                    y2 = (i + 1) * frame.shape[0] // grid_size
+                    x1 = j * frame.shape[1] // grid_size
+                    x2 = (j + 1) * frame.shape[1] // grid_size
+
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 1)
+                    cv2.putText(frame, f'{cbf_grid[i, j]:.2f}', (x1 + 5, y1 + 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale,
+                                (0, 255, 0), 1)
+
+            out.write(frame)
+
+        capture.release()
+        out.release()
+
+        # Convert video to MP4 format for compatibility
+        def convert_video_to_mp4(input_path):
+            output_path = input_path.replace('.avi', '_converted.mp4')
+            subprocess.run(
+                ['ffmpeg', '-y', '-i', input_path, '-vcodec', 'libx264', '-crf', '23', '-preset', 'fast', output_path],
+                check=True)
+            return output_path
+
+        converted_grid_video_path = convert_video_to_mp4(grid_video_path)
+
+        col1, col2, col3, col4, col5 = st.columns(
+            [2.5, 0.2, 3.0, 0.01, 2])  # Added two columns with 0.5 width to create spacing
+
+        with col1:
+            st.markdown(
+                f"<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 0px;'>Grid Video</h5>",
+                unsafe_allow_html=True)
+            st.video(converted_grid_video_path, format='video/mp4')
+            with open(converted_grid_video_path, "rb") as file:
+                st.download_button("Download Grid Video", file.read(), file_name='grid_video.mp4',
+                                   key="download_grid_video")
+
+        with col3:
+            st.markdown(
+                f"<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 0px;'>CBF Heatmap</h5>",
+                unsafe_allow_html=True)
+            st.image(grid_map_path, use_column_width=True)
+            with open(grid_map_path, "rb") as file:
+                st.download_button("Download Grid CBF Map", file.read(), file_name='grid_cbf_map.png',
+                                   key="download_grid_cbf_map")
+
+        with col5:
+            st.markdown(
+                f"<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 0px;'>Variation Metrics</h5>",
+                unsafe_allow_html=True)
+            variation_data = {
+                'Metric': ['Mean CBF','Standard Deviation of CBF', 'Coefficient of Variation'],
+                'Value': [f"{mean_cbf:.2f}", f"{std_dev_cbf:.2f}", f"{cv_cbf:.2f}"]
+            }
+            variation_df = pd.DataFrame(variation_data)
+            st.markdown(
+                variation_df.to_html(index=False, justify='center', table_id="variation_metrics_table"),
+                unsafe_allow_html=True
+            )
+
+        # Adding custom CSS to center the table
+        st.markdown(
+            """
+            <style>
+            #variation_metrics_table {
+                margin-left: auto;
+                margin-right: auto;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+
+
+
+
+
+
 
 
 
