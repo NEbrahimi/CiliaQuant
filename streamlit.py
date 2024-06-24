@@ -757,6 +757,14 @@ with st.sidebar:
                                 help="Set the size of the grid.")
     run_step_4 = st.button("Run Step 4")
 
+
+# Define tooltips for each metric
+tooltips = {
+    'Standard Deviation of CBF': 'The standard deviation of the Ciliary Beat Frequency, indicating variability.',
+    'Coefficient of Variation': 'The ratio of the standard deviation to the mean, indicating relative variability.'
+}
+
+
 # Step 1
 if uploaded_file and exposure_time > 0 and run_step_1:
     # Clear session state for subsequent steps
@@ -1108,32 +1116,150 @@ if 'fft_results' in st.session_state and run_step_4:
                 st.download_button("Download Grid CBF Map", file.read(), file_name='grid_cbf_map.png',
                                    key="download_grid_cbf_map")
 
+        # with col5:
+        #     st.markdown(
+        #         f"<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 0px;'>Variation Metrics</h5>",
+        #         unsafe_allow_html=True)
+        #     variation_data = {
+        #         'Metric': ['Mean CBF', 'Standard Deviation of CBF', 'Coefficient of Variation'],
+        #         'Value': [f"{mean_cbf:.2f}", f"{std_dev_cbf:.2f}", f"{cv_cbf:.2f}"]
+        #     }
+        #     variation_df = pd.DataFrame(variation_data)
+        #     st.markdown(
+        #         variation_df.to_html(index=False, justify='center', table_id="variation_metrics_table"),
+        #         unsafe_allow_html=True
+        #     )
+        #
+        # # Adding custom CSS to center the table
+        # st.markdown(
+        #     """
+        #     <style>
+        #     #variation_metrics_table {
+        #         margin-left: auto;
+        #         margin-right: auto;
+        #     }
+        #     </style>
+        #     """,
+        #     unsafe_allow_html=True
+        # )
+
         with col5:
             st.markdown(
                 f"<h5 style='text-align: center; font-size: 18px; font-weight: bold; margin-left: 0px;'>Variation Metrics</h5>",
                 unsafe_allow_html=True)
+
             variation_data = {
-                'Metric': ['Mean CBF','Standard Deviation of CBF', 'Coefficient of Variation'],
+                'Metric': [
+                    'Mean CBF',
+                    'Standard Deviation of CBF',
+                    'Coefficient of Variation'
+                ],
                 'Value': [f"{mean_cbf:.2f}", f"{std_dev_cbf:.2f}", f"{cv_cbf:.2f}"]
             }
-            variation_df = pd.DataFrame(variation_data)
-            st.markdown(
-                variation_df.to_html(index=False, justify='center', table_id="variation_metrics_table"),
-                unsafe_allow_html=True
-            )
 
-        # Adding custom CSS to center the table
-        st.markdown(
-            """
-            <style>
-            #variation_metrics_table {
-                margin-left: auto;
-                margin-right: auto;
+            tooltips = {
+                'Mean CBF': 'The average of the Ciliary Beat Frequency values.',
+                'Standard Deviation of CBF': 'The standard deviation of the Ciliary Beat Frequency, indicating variability.',
+                'Coefficient of Variation': 'The ratio of the standard deviation to the mean, indicating relative variability.'
             }
+
+            html_table = """
+            <style>
+                .tooltip {
+                    position: relative;
+                    display: inline-block;
+                    cursor: pointer;
+                    font-size: 14px;
+                    color: #6c757d;
+                    margin-left: 5px;
+                }
+
+                .tooltip .tooltiptext {
+                    visibility: hidden;
+                    width: 200px;
+                    background-color: #555;
+                    color: #fff;
+                    text-align: center;
+                    border-radius: 6px;
+                    padding: 5px;
+                    position: absolute;
+                    z-index: 1;
+                    bottom: 125%; /* Position the tooltip above the text */
+                    left: 50%;
+                    margin-left: -100px;
+                    opacity: 0;
+                    transition: opacity 0.3s;
+                }
+
+                .tooltip:hover .tooltiptext {
+                    visibility: visible;
+                    opacity: 1;
+                }
+
+                .tooltip:after {
+                    content: "?";
+                    display: inline-block;
+                    font-size: 12px;
+                    color: white;
+                    background-color: #6c757d;
+                    border-radius: 50%;
+                    width: 18px;
+                    height: 18px;
+                    text-align: center;
+                    line-height: 18px;
+                    margin-left: 5px;
+                }
+
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                th, td {
+                    border: 1px solid black;
+                    padding: 8px;
+                    text-align: left;
+                }
+                th {
+                    background-color: #f2f2f2;
+                }
             </style>
-            """,
-            unsafe_allow_html=True
-        )
+            <table>
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
+
+            for metric, value in zip(variation_data['Metric'], variation_data['Value']):
+                html_table += f"""
+                    <tr>
+                        <td>{metric} <span class="tooltip"><span class="tooltiptext">{tooltips[metric]}</span></span></td>
+                        <td>{value}</td>
+                    </tr>
+                """
+
+            html_table += """
+                </tbody>
+            </table>
+            """
+
+            # Display the table with tooltips
+            st.markdown(html_table, unsafe_allow_html=True)
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
