@@ -757,6 +757,12 @@ with st.sidebar:
                                 help="Set the size of the grid.")
     run_step_4 = st.button("Run Step 4")
 
+    # Sidebar Input for Step 5
+    st.title("Step 5: Cilia Beat Coordination Analysis")
+    coordination_video_source = st.radio("Select Video Source", options=['Original', 'Masked'], index=0,
+                            help="Choose whether to use the original or masked video for analysis for coordination.")
+    run_step_5 = st.button("Run Step 5")
+
 
 # Define tooltips for each metric
 tooltips = {
@@ -1136,39 +1142,3 @@ if 'fft_results' in st.session_state and run_step_4:
                 """,
                 unsafe_allow_html=True
             )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
