@@ -15,12 +15,17 @@ from scipy.interpolate import UnivariateSpline
 import seaborn as sns
 import matplotlib as mpl
 import matplotlib.ticker as ticker
+from sklearn.cluster import KMeans
+from scipy.signal import hilbert
+from scipy.ndimage import gaussian_filter
+from scipy.stats import entropy, pearsonr, spearmanr
+from skimage.util import view_as_blocks
 
 
 # Set page configuration and styles
 # st.set_page_config(page_title="Cilia Analysis Tool", layout="wide")
 # st.markdown(
-#     """
+#     """b
 #     <style>
 #     .css-18e3th9 {background-color: #F8F9FA;}
 #     .css-1d391kg {background-color: white;}
@@ -727,7 +732,90 @@ def compute_grid_cbf(fft_results, fps, grid_size, freq_filter_min, freq_filter_m
     return cbf_grid
 
 
+def calculate_optical_flow(video_frames, mask=None):
+    flow_vectors = []
+    prev_frame = video_frames[:, :, 0]
+    for i in range(1, video_frames.shape[2]):
+        next_frame = video_frames[:, :, i]
+        flow = cv2.calcOpticalFlowFarneback(prev_frame, next_frame, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+        if mask is not None:
+            flow = flow * np.expand_dims(mask, axis=2)
+        flow_vectors.append(flow)
+        prev_frame = next_frame
+    flow_vectors = np.array(flow_vectors)
+    return flow_vectors
 
+# Calculate Shannon Entropy
+def calculate_entropy(map):
+    value, counts = np.unique(map, return_counts=True)
+    return entropy(counts)
+
+# # Calculate Grid-Based Coordination Metrics
+# def calculate_grid_metrics(map, grid_size=10):
+#     h, w = map.shape
+#     grid_h, grid_w = h // grid_size, w // grid_size
+#     grid_metrics = np.zeros((grid_size, grid_size))
+#
+#     for i in range(grid_size):
+#         for j in range(grid_size):
+#             grid_patch = map[i*grid_h:(i+1)*grid_h, j*grid_w:(j+1)*grid_w]
+#             grid_metrics[i, j] = np.mean(grid_patch)
+#
+#     return grid_metrics
+
+# Calculate Spatial Autocorrelation
+def calculate_spatial_autocorrelation(map):
+    h, w = map.shape
+    y, x = np.indices((h, w))
+    x = x - np.mean(x)
+    y = y - np.mean(y)
+    distances = np.sqrt(x**2 + y**2)
+    sorted_distances = np.argsort(distances.ravel())
+    sorted_map = map.ravel()[sorted_distances]
+    sorted_distances = distances.ravel()[sorted_distances]
+    mean_map = np.mean(sorted_map)
+    autocorrelation = np.correlate(sorted_map - mean_map, sorted_map - mean_map, mode='full')
+    autocorrelation = autocorrelation[autocorrelation.size // 2:]
+    return autocorrelation, sorted_distances
+
+def calculate_phase_synchronization(flow_vectors, mask=None):
+    # Compute the phase from the optical flow vectors
+    angles = np.angle(flow_vectors[..., 0] + 1j * flow_vectors[..., 1])
+    if mask is not None:
+        angles = angles * mask
+    phase_map = hilbert(angles, axis=0)
+    mean_phase = np.mean(phase_map, axis=0)
+    if mask is not None:
+        mean_phase = np.mean(phase_map * mask, axis=0)
+    mpc = np.abs(np.mean(np.exp(1j * (phase_map - mean_phase)), axis=0))
+    if mask is not None:
+        mpc = mpc * mask
+    return mpc, angles
+
+
+def calculate_mpc_without_background(mpc_map, mask):
+    masked_mpc = mpc_map[mask > 0]
+    mean_mpc = np.mean(masked_mpc)
+    return mean_mpc
+
+def visualize_phase_synchronization(mpc_map, phase_map):
+    # Visualize Mean Phase Coherence (MPC)
+    plt.figure(figsize=(10, 8))
+    plt.imshow(mpc_map, cmap='jet', interpolation='nearest', vmin=0, vmax=1)
+    plt.colorbar(label='Phase Synchronization Index')
+    plt.title('Phase Synchronization Map')
+    plt.xlabel('Pixel X')
+    plt.ylabel('Pixel Y')
+    plt.show()
+
+    # Visualize phase map
+    plt.figure(figsize=(10, 8))
+    plt.imshow(gaussian_filter(np.mean(phase_map, axis=0), sigma=1), cmap='jet', interpolation='nearest')
+    plt.colorbar(label='Phase')
+    plt.title('Mean Phase Map')
+    plt.xlabel('Pixel X')
+    plt.ylabel('Pixel Y')
+    plt.show()
 
 # Input widgets
 with st.sidebar:
@@ -760,7 +848,10 @@ with st.sidebar:
     # Sidebar Input for Step 5
     st.title("Step 5: Cilia Beat Coordination Analysis")
     coordination_video_source = st.radio("Select Video Source", options=['Original', 'Masked'], index=0,
-                            help="Choose whether to use the original or masked video for analysis for coordination.")
+                                         help="Choose whether to use the original or masked video for analysis for coordination.")
+    grid_size = st.number_input("Grid Size for Coordination Analysis", min_value=1, max_value=20, value=10, step=1)
+    n_clusters = st.number_input("Number of Clusters for Coordination Analysis", min_value=1, max_value=10, value=5,
+                                 step=1)
     run_step_5 = st.button("Run Step 5")
 
 
@@ -1142,3 +1233,133 @@ if 'fft_results' in st.session_state and run_step_4:
                 """,
                 unsafe_allow_html=True
             )
+
+# Step 5 processing
+# if 'original_video_path' in st.session_state and run_step_5:
+#     fps = 1 / exposure_time
+#     video_path = st.session_state['original_video_path'] if coordination_video_source == 'Original' else \
+#         st.session_state['masked_video_permanent_path']
+#     if video_path is None:
+#         st.error(
+#             "The selected video source is not available. Please complete the necessary steps for generating the video.")
+#     else:
+#         video_capture = cv2.VideoCapture(video_path)
+#         frames = []
+#         while video_capture.isOpened():
+#             ret, frame = video_capture.read()
+#             if not ret:
+#                 break
+#             gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+#             frames.append(gray_frame)
+#         video_capture.release()
+#
+#         video_frames = np.stack(frames, axis=2)
+#
+#         # Load mask if available
+#         mask = None
+#         if coordination_video_source == 'Masked' and 'mask_path' in st.session_state:
+#             mask = cv2.imread(st.session_state['mask_path'], cv2.IMREAD_GRAYSCALE)
+#             if mask is not None:
+#                 mask = mask.astype(np.bool_)
+#
+#         flow_vectors = calculate_optical_flow(video_frames, mask)
+#         mpc_map, phase_map = calculate_phase_synchronization(flow_vectors, mask)
+#
+#         if mask is not None:
+#             mean_mpc = calculate_mpc_without_background(mpc_map, mask)
+#         else:
+#             mean_mpc = np.mean(mpc_map)
+#         st.write(f"Mean Phase Coherence (MPC) as Coordination Level: {mean_mpc:.2f}")
+#
+#         col1, col2 = st.columns(2)
+#         with col1:
+#             st.subheader("Phase Synchronization Map")
+#             fig1, ax1 = plt.subplots()
+#             im1 = ax1.imshow(mpc_map, cmap='jet', interpolation='nearest', vmin=0, vmax=1)
+#             plt.colorbar(im1, ax=ax1)
+#             st.pyplot(fig1)
+#
+#         with col2:
+#             st.subheader("Mean Phase Map")
+#             fig2, ax2 = plt.subplots()
+#             im2 = ax2.imshow(gaussian_filter(np.mean(phase_map, axis=0), sigma=1), cmap='jet', interpolation='nearest')
+#             plt.colorbar(im2, ax=ax2)
+#             st.pyplot(fig2)
+
+if 'original_video_path' in st.session_state and run_step_5:
+    fps = 1 / exposure_time
+    video_path = st.session_state['original_video_path'] if coordination_video_source == 'Original' else st.session_state['masked_video_permanent_path']
+    if video_path is None:
+        st.error("The selected video source is not available. Please complete the necessary steps for generating the video.")
+    else:
+        video_capture = cv2.VideoCapture(video_path)
+        frames = []
+        while video_capture.isOpened():
+            ret, frame = video_capture.read()
+            if not ret:
+                break
+            gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            frames.append(gray_frame)
+        video_capture.release()
+
+        video_frames = np.stack(frames, axis=2)
+
+        # Load mask if available
+        mask = None
+        if coordination_video_source == 'Masked' and 'mask_path' in st.session_state:
+            mask = cv2.imread(st.session_state['mask_path'], cv2.IMREAD_GRAYSCALE)
+            if mask is not None:
+                mask = mask.astype(np.bool_)
+
+        flow_vectors = calculate_optical_flow(video_frames, mask)
+        mpc_map, phase_map = calculate_phase_synchronization(flow_vectors, mask)
+
+        if mask is not None:
+            mean_mpc = calculate_mpc_without_background(mpc_map, mask)
+        else:
+            mean_mpc = np.mean(mpc_map)
+        st.write(f"Mean Phase Coherence (MPC) as Coordination Level: {mean_mpc:.2f}")
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.subheader("Phase Synchronization Map")
+            fig1, ax1 = plt.subplots()
+            im1 = ax1.imshow(mpc_map, cmap='jet', interpolation='nearest', vmin=0, vmax=1)
+            plt.colorbar(im1, ax=ax1)
+            st.pyplot(fig1)
+
+        with col2:
+            st.subheader("Mean Phase Map")
+            fig2, ax2 = plt.subplots()
+            im2 = ax2.imshow(gaussian_filter(np.mean(phase_map, axis=0), sigma=1), cmap='jet', interpolation='nearest')
+            plt.colorbar(im2, ax=ax2)
+            st.pyplot(fig2)
+
+        with col3:
+
+            # Calculate and display Shannon Entropy
+            shannon_entropy = calculate_entropy(mpc_map)
+            st.write(f"Shannon Entropy: {shannon_entropy:.2f}")
+
+            # Spatial Correlation Analysis
+            autocorrelation, distances = calculate_spatial_autocorrelation(mpc_map)
+            st.subheader("Spatial Autocorrelation")
+            fig3, ax3 = plt.subplots()
+            ax3.plot(distances[:autocorrelation.size], autocorrelation)
+            ax3.set_xlabel('Distance')
+            ax3.set_ylabel('Autocorrelation')
+            ax3.set_title('Spatial Autocorrelation of Phase Synchronization Map')
+            st.pyplot(fig3)
+
+            # Pearson/Spearman Correlation Coefficient (example between top-left and bottom-right quadrants)
+            quadrant_size = (mpc_map.shape[0] // 2, mpc_map.shape[1] // 2)
+            top_left = mpc_map[:quadrant_size[0], :quadrant_size[1]].ravel()
+            bottom_right = mpc_map[quadrant_size[0]:, quadrant_size[1]:].ravel()
+            pearson_corr, _ = pearsonr(top_left, bottom_right)
+            spearman_corr, _ = spearmanr(top_left, bottom_right)
+            st.write(f"Pearson Correlation between top-left and bottom-right quadrants: {pearson_corr:.2f}")
+            st.write(f"Spearman Correlation between top-left and bottom-right quadrants: {spearman_corr:.2f}")
+
+
+
+
