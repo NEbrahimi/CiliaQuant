@@ -6,3 +6,5 @@ matplotlib
 scipy
 pandas
 seaborn
+scikit-learn
+scikit-image
